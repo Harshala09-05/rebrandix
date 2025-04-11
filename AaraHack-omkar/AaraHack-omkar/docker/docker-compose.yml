@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/backend/dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../docker/backend/entrypoint.sh:/app/entrypoint.sh
+      - static_volume:/app/staticfiles 
+
+    command: sh -c "chmod +x /app/entrypoint.sh && /app/entrypoint.sh"
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/frontend/dockerfile
+    ports:
+      - "5173:5173"
+    command: npm run preview -- --host
+
+volumes:
+  static_volume:
+  

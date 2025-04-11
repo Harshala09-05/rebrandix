@@ -1,0 +1,152 @@
+# name: Deploy to EC2
+
+# on:
+#   push:
+#     branches: ["main"]
+
+# env:
+#   AWS_REGION: us-east-1
+#   EC2_INSTANCE_IP: ${{ secrets.EC2_INSTANCE_IP }}
+#   EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+#   DB_HOST: ${{ secrets.DB_HOST }}
+#   DB_USER: ${{ secrets.DB_USER }}
+#   DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+#   DB_NAME: ${{ secrets.DB_NAME }}
+#   DB_PORT: ${{ secrets.DB_PORT }}
+#   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+#   DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       # Checkout repository
+#       - name: Checkout code
+#         uses: actions/checkout@v3
+
+#       # Setup Node.js
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v3
+#         with:
+#           node-version: '18.x'
+
+#       # Install frontend dependencies and build
+#       - name: Install frontend dependencies
+#         run: |
+#           cd frontend/
+#           npm install
+#           npm run build
+
+#       # Install Docker Compose
+#       - name: Install Docker Compose
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y docker-compose
+#           docker-compose --version
+
+#       # Docker login step
+#       - name: Login to Docker Hub
+#         run: |
+#           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+#           echo "Docker login successful"
+
+#       # Build and push images using individual Docker commands
+#       - name: Build and push Docker images
+#         run: |
+#           # Build backend with latest tag
+#           docker build -t ${{ secrets.DOCKER_USERNAME }}/graphql-dashboard-backend:latest -f docker/backend/dockerfile backend/
+          
+#           # Build frontend with latest tag
+#           docker build -t ${{ secrets.DOCKER_USERNAME }}/graphql-dashboard-frontend:latest -f docker/frontend/dockerfile frontend/
+          
+#           # Test access to Docker Hub
+#           docker info
+          
+#           # Push all images to Docker Hub
+#           docker push ${{ secrets.DOCKER_USERNAME }}/graphql-dashboard-backend:latest
+#           docker push ${{ secrets.DOCKER_USERNAME }}/graphql-dashboard-frontend:latest
+
+#       # Create a deployment docker-compose file for EC2
+#       - name: Create deployment docker-compose file
+#         run: |
+#           cat << EOF > ec2-docker-compose.yml
+        
+#           services:
+#             backend:
+#               image: ${{ secrets.DOCKER_USERNAME }}/graphql-dashboard-backend:latest
+#               ports:
+#                 - "8000:8000"
+#               environment:
+#                 - DB_HOST=${{ env.DB_HOST }}
+#                 - DB_USER=${{ env.DB_USER }}
+#                 - DB_PASSWORD=${{ env.DB_PASSWORD }}
+#                 - DB_NAME=${{ env.DB_NAME }}
+#                 - DB_PORT=${{ env.DB_PORT }}
+#               restart: always
+            
+#             frontend:
+#               image: ${{ secrets.DOCKER_USERNAME }}/graphql-dashboard-frontend:latest
+#               ports:
+#                 - "5173:4173"
+#               restart: always
+#           EOF
+
+#       # Prepare deployment script
+#       - name: Prepare deployment script
+#         run: |
+#           cat << EOF > deploy.sh
+#           #!/bin/bash
+#           set -e
+          
+#           # Pull latest images
+#           docker-compose -f ec2-docker-compose.yml pull
+          
+#           # Stop and remove existing containers
+#           docker-compose -f ec2-docker-compose.yml down
+          
+#           # Start new containers
+#           docker-compose -f ec2-docker-compose.yml up -d
+          
+#           # Clean up unused images
+#           docker image prune -f
+#           EOF
+#           chmod +x deploy.sh
+
+#       # Transfer docker-compose.yml and deploy.sh to EC2 using SCP action
+#       - name: Copy files to EC2
+#         uses: appleboy/scp-action@master
+#         with:
+#           host: ${{ env.EC2_INSTANCE_IP }}
+#           username: ec2-user
+#           key: ${{ env.EC2_SSH_PRIVATE_KEY }}
+#           source: "ec2-docker-compose.yml,deploy.sh"
+#           target: "/home/ec2-user/"
+
+#       # Deploy on EC2 via SSH
+#       - name: Execute deployment script on EC2
+#         uses: appleboy/ssh-action@master
+#         with:
+#           host: ${{ env.EC2_INSTANCE_IP }}
+#           username: ec2-user
+#           key: ${{ env.EC2_SSH_PRIVATE_KEY }}
+#           script: |
+           
+#             sudo service docker start
+            
+#             # Login to Docker Hub to pull private images if needed
+#             echo "${{ env.DOCKER_PASSWORD }}" | docker login -u "${{ env.DOCKER_USERNAME }}" --password-stdin
+            
+#             cd /home/ec2-user
+#             chmod +x deploy.sh
+#             ./deploy.sh
+            
+#             # Wait for containers to fully start
+#             echo "Waiting for containers to start..."
+#             sleep 5
+            
+#             # Run migrations
+#             echo "Running database migrations..."
+#             docker exec -i ec2-user-backend-1 python manage.py migrate
+
+          

@@ -1,0 +1,17 @@
+FROM node:22
+
+WORKDIR /app
+
+ENV ROLLUP_SKIP_NODEJS_OPTIONAL=1
+
+# Since the context is ../frontend, don't include "frontend/" in the path
+COPY package*.json ./
+
+RUN npm install
+
+# Don't include "frontend" here either
+COPY . .
+
+EXPOSE 5173
+
+CMD ["npm", "run", "preview", "--", "--host"]
